@@ -1,0 +1,6 @@
+@DatabaseBackup_HostAddress = http://localhost:5184
+
+GET {{DatabaseBackup_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
