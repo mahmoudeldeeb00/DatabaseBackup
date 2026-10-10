@@ -29,7 +29,7 @@ public class DatabaseBackupService
         if (string.IsNullOrWhiteSpace(rootPath))
             rootPath = Path.Combine(_environment.ContentRootPath, "Backups");
 
-        var today = DateTime.Now.ToString("yyyy-MM-dd");
+        var today = DateTime.Now.ToString("yyyy-MM-dd-hh-mm-tt");
         var backupFolder = Path.Combine(rootPath, today);
         Directory.CreateDirectory(backupFolder);
 
