@@ -7,10 +7,10 @@ namespace DatabaseBackup.Services;
 public class DatabaseBackupService
 {
     // Name of each backup folder/zip, e.g. 2026-10-10-02-30-PM.zip
-    private const string BackupNameFormat = "yyyy-MM-dd-hh-mm-tt";
+    internal const string BackupNameFormat = "yyyy-MM-dd-hh-mm-tt";
 
-    // Local backups older than this are deleted before each run
-    private const int RetentionDays = 7;
+    // Backups older than this are deleted locally and on Google Drive
+    internal const int RetentionDays = 7;
 
     private readonly IConfiguration _configuration;
     private readonly IWebHostEnvironment _environment;

@@ -1,3 +1,4 @@
+using System.Globalization;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Services;
@@ -60,8 +61,60 @@ public class GoogleDriveService
         if (result.Status != UploadStatus.Completed)
             throw new InvalidOperationException($"Upload to Google Drive failed: {result.Exception?.Message}", result.Exception);
 
+        // Only clean up after a successful upload, so Drive never ends up with no backups
+
+        try
+        {
+        await DeleteOldBackupsAsync(drive, folderId, cancellationToken);
+        }
+        catch
+        {
+
+        }
+
         var file = request.ResponseBody;
         return new DriveUploadResult(file.Id, file.Name, file.Size, file.WebViewLink);
+    }
+
+    /// <summary>
+    /// Permanently deletes zips in the backup folder whose name date is older than RetentionDays.
+    /// Permanent delete (not trash) so the space is freed right away.
+    /// </summary>
+    private async Task DeleteOldBackupsAsync(DriveService drive, string folderId, CancellationToken cancellationToken)
+    {
+        var cutoff = DateTime.Now.AddDays(-DatabaseBackupService.RetentionDays);
+        string? pageToken = null;
+
+        do
+        {
+            var list = drive.Files.List();
+            list.Q = $"'{folderId}' in parents and trashed = false";
+            list.Fields = "nextPageToken, files(id, name)";
+            list.PageSize = 100;
+            list.PageToken = pageToken;
+
+            var page = await list.ExecuteAsync(cancellationToken);
+            foreach (var file in page.Files)
+            {
+                if (!file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)
+                    || !DateTime.TryParseExact(Path.GetFileNameWithoutExtension(file.Name), DatabaseBackupService.BackupNameFormat,
+                        CultureInfo.InvariantCulture, DateTimeStyles.None, out var createdAt)
+                    || createdAt >= cutoff)
+                    continue;
+
+                try
+                {
+                    await drive.Files.Delete(file.Id).ExecuteAsync(cancellationToken);
+                    _logger.LogInformation("Deleted old Drive backup {File}", file.Name);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Could not delete old Drive backup {File}", file.Name);
+                }
+            }
+
+            pageToken = page.NextPageToken;
+        } while (pageToken != null);
     }
 
     private async Task<DriveService> CreateDriveServiceAsync(CancellationToken cancellationToken)
