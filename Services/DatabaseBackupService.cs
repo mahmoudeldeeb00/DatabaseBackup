@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using Microsoft.Data.SqlClient;
 
@@ -5,6 +6,12 @@ namespace DatabaseBackup.Services;
 
 public class DatabaseBackupService
 {
+    // Name of each backup folder/zip, e.g. 2026-10-10-02-30-PM.zip
+    private const string BackupNameFormat = "yyyy-MM-dd-hh-mm-tt";
+
+    // Local backups older than this are deleted before each run
+    private const int RetentionDays = 7;
+
     private readonly IConfiguration _configuration;
     private readonly IWebHostEnvironment _environment;
     private readonly ILogger<DatabaseBackupService> _logger;
@@ -29,7 +36,9 @@ public class DatabaseBackupService
         if (string.IsNullOrWhiteSpace(rootPath))
             rootPath = Path.Combine(_environment.ContentRootPath, "Backups");
 
-        var today = DateTime.Now.ToString("yyyy-MM-dd-hh-mm-tt");
+        DeleteOldBackups(rootPath);
+
+        var today = DateTime.Now.ToString(BackupNameFormat, CultureInfo.InvariantCulture);
         var backupFolder = Path.Combine(rootPath, today);
         Directory.CreateDirectory(backupFolder);
 
@@ -72,6 +81,51 @@ public class DatabaseBackupService
         }
 
         return zipPath;
+    }
+
+    /// <summary>
+    /// Deletes backup zips (and leftover folders) whose name date is older than RetentionDays.
+    /// Only items named in BackupNameFormat are touched.
+    /// </summary>
+    private void DeleteOldBackups(string rootPath)
+    {
+        try
+        {
+
+      
+        if (!Directory.Exists(rootPath))
+            return;
+
+        var cutoff = DateTime.Now.AddDays(-RetentionDays);
+
+        foreach (var path in Directory.EnumerateFileSystemEntries(rootPath))
+        {
+            var isZip = File.Exists(path);
+            if (isZip && !path.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var name = isZip ? Path.GetFileNameWithoutExtension(path) : Path.GetFileName(path);
+            if (!DateTime.TryParseExact(name, BackupNameFormat, CultureInfo.InvariantCulture, DateTimeStyles.None, out var createdAt)
+                || createdAt >= cutoff)
+                continue;
+
+            try
+            {
+                if (isZip)
+                    File.Delete(path);
+                else
+                    Directory.Delete(path, recursive: true);
+
+                _logger.LogInformation("Deleted old backup {Path} from {Date:yyyy-MM-dd}", path, createdAt);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not delete old backup {Path}", path);
+            }
+        }
+
+        }
+        catch { }
     }
 
     private static async Task<List<string>> GetUserDatabasesAsync(SqlConnection connection, CancellationToken cancellationToken)
