@@ -56,6 +56,21 @@ public class DatabaseBackupService
             File.Delete(zipPath);
 
         ZipFile.CreateFromDirectory(backupFolder, zipPath, CompressionLevel.Optimal, includeBaseDirectory: true);
+
+        // The zip now holds every .bak file, so the raw folder is no longer needed
+        if (new FileInfo(zipPath) is { Exists: true, Length: > 0 })
+        {
+            try
+            {
+                Directory.Delete(backupFolder, recursive: true);
+                _logger.LogInformation("Deleted backup folder {Folder} after zipping", backupFolder);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not delete backup folder {Folder}", backupFolder);
+            }
+        }
+
         return zipPath;
     }
 
